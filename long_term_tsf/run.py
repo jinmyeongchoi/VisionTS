@@ -83,6 +83,11 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
+    parser.add_argument('--Lambda', type=float, default=0, help='lambda for new loss')
+    parser.add_argument('--distance', type=str, default="KL", help='distance for new loss')
+    parser.add_argument('--base', type=str, default="MSE", help='base for new loss')
+    parser.add_argument('--temp_to', type=str, default="both", help='placement of temperature(true, pred, both)')
+    parser.add_argument('--temperature', type=float, default=1, help='temperature for new loss softmax')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 
@@ -140,7 +145,7 @@ if __name__ == '__main__':
             if args.save_dir != '.':
                 setting = '_'
             else:
-                setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+                setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_dist{}_temp{}_tempto{}_lbd{}_{}'.format(
                     args.task_name,
                     args.model_id,
                     args.model,
@@ -157,7 +162,12 @@ if __name__ == '__main__':
                     args.factor,
                     args.embed,
                     args.distil,
-                args.des, ii)
+                    args.des,
+                    args.distance,
+                    args.temperature,
+                    args.temp_to,
+                    args.Lambda,
+                  ii)
 
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
             exp.train(setting)

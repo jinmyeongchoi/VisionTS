@@ -2,6 +2,8 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
+from utils.new import NEWLoss
+
 import torch
 import torch.nn as nn
 from torch import optim
@@ -35,7 +37,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        # criterion = nn.MSELoss()
+        if self.args.loss == "NEW":
+            print("NEW!")
+            criterion = NEWLoss(base=self.args.base, distance=self.args.distance, Lambda=self.args.Lambda, temperature=self.args.temperature, temp_to=self.args.temp_to)
+        elif self.args.loss == "MSE":
+            print("MSE!")
+            criterion = nn.MSELoss()
+        elif self.args.loss == "MAE":
+            print("MAE!")
+            criterion = nn.L1Loss()
         return criterion
 
     def vali(self, vali_data, vali_loader, criterion):
@@ -200,7 +211,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = []
         trues = []
-        folder_path = f'{self.args.save_dir}/test_results/' + setting + '/'
+        if self.args.Lambda:
+            folder_path = f'{self.args.save_dir}_{self.args.temp_to}_{self.args.distance}_lambda{self.args.Lambda}_t{self.args.temperature}/test_results/' + setting + '/'
+        else:
+            folder_path = f'{self.args.save_dir}/test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
@@ -248,6 +262,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
+                if i % 20 == 0:
+                    input = batch_x.detach().cpu().numpy()
+                    if test_data.scale and self.args.inverse:
+                        shape = input.shape
+                        input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
@@ -257,7 +279,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('test shape:', preds.shape, trues.shape)
 
         # result save
-        folder_path = f'{self.args.save_dir}/results/' + setting + '/'
+        if self.args.Lambda:
+            folder_path = f'{self.args.save_dir}_{self.args.temp_to}_{self.args.distance}_lambda{self.args.Lambda}_t{self.args.temperature}/results/' + setting + '/'
+        else:
+            folder_path = f'{self.args.save_dir}/results/' + setting + '/'
+
+        # folder_path = f'{self.args.save_dir}/results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
