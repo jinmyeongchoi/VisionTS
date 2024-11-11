@@ -6,7 +6,7 @@
 #SBATCH --time=0-10:00:00                     # 1 hour timelimit
 #SBATCH --mem=10000MB                         # Using 10GB CPU Memory
 #SBATCH --cpus-per-task=4                     # Using 4 maximum processor
-#SBATCH --output=output/ETT/ETTh1/output_ETTh1_KL0001_temp001_pred_full.txt
+#SBATCH --output=../output/ETT/ETTh1/output_ETTh1_KL0001_temp001_pred_full.txt
 
 # --output=output/ETT/ETTh1/output_ETTh1_EM0001_temp075_full.txt
 
@@ -14,7 +14,7 @@ source ${HOME}/.bashrc
 source ${HOME}/anaconda3/bin/activate
 
 conda activate vision
-cd VisionTS/long_term_tsf #/scripts/vision_ts_zeroshot
+cd long_term_tsf #/scripts/vision_ts_zeroshot
 
 
 # export CUDA_VISIBLE_DEVICES=3
