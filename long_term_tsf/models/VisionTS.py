@@ -1,4 +1,3 @@
-
 import sys
 sys.path.append("../")
 
@@ -16,8 +15,8 @@ class Model(nn.Module):
         self.task_name = config.task_name
         self.pred_len = config.pred_len
         self.seq_len = config.seq_len
-
-        self.vm = VisionTS(arch=config.vm_arch, finetune_type=config.ft_type, load_ckpt=config.vm_pretrained == 1, ckpt_dir=config.vm_ckpt)
+        in_chans = config.enc_in
+        self.vm = VisionTS(arch=config.vm_arch, finetune_type=config.ft_type, load_ckpt=config.vm_pretrained == 1, ckpt_dir=config.vm_ckpt, in_chans=config.enc_in)
 
         self.vm.update_config(context_len=config.seq_len, pred_len=config.pred_len, periodicity=config.periodicity, interpolation=config.interpolation, norm_const=config.norm_const, align_const=config.align_const)
 
