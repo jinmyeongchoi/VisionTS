@@ -2,7 +2,7 @@ import torch
 
 import os
 
-from . import models_mae
+from . import models_mae_revised
 import einops
 import torch.nn.functional as F
 from torch import nn
@@ -10,16 +10,16 @@ from PIL import Image
 from . import util
 
 MAE_ARCH = {
-    "mae_base": [models_mae.mae_vit_base_patch16, "mae_visualize_vit_base.pth"],
-    "mae_large": [models_mae.mae_vit_large_patch16, "mae_visualize_vit_large.pth"],
-    "mae_huge": [models_mae.mae_vit_huge_patch14, "mae_visualize_vit_huge.pth"]
+    "mae_base": [models_mae_revised.mae_vit_base_patch16, "mae_visualize_vit_base.pth"],
+    "mae_large": [models_mae_revised.mae_vit_large_patch16, "mae_visualize_vit_large.pth"],
+    "mae_huge": [models_mae_revised.mae_vit_huge_patch14, "mae_visualize_vit_huge.pth"]
 }
 
 MAE_DOWNLOAD_URL = "https://dl.fbaipublicfiles.com/mae/visualize/"
 
 class VisionTS(nn.Module):
 
-    def __init__(self, arch='mae_base', finetune_type='ln', ckpt_dir='./ckpt/', load_ckpt=True, in_chans=7):
+    def __init__(self, arch='mae_base', finetune_type='ln', ckpt_dir='./ckpt/', load_ckpt=True, c_out=7):
         super(VisionTS, self).__init__()
 
         if arch not in MAE_ARCH:
@@ -50,9 +50,8 @@ class VisionTS(nn.Module):
                     param.requires_grad = '.mlp.' in n
                 elif 'attn' in finetune_type:
                     param.requires_grad = '.attn.' in n
-
-        self.in_chans = in_chans
-        
+        self.linear = nn.Linear(1, c_out)
+    
     def update_config(self, context_len, pred_len, periodicity=1, norm_const=0.4, align_const=0.4, interpolation='bilinear'):
         self.image_size = self.vision_model.patch_embed.img_size[0]
         self.patch_size = self.vision_model.patch_embed.patch_size[0]
@@ -99,7 +98,7 @@ class VisionTS(nn.Module):
         # x: look-back window, size: [bs x context_len x nvars]
         # fp64=True can avoid math overflow in some benchmark, like Bitcoin.
         # return: forecasting window, size: [bs x pred_len x nvars]
-        self.nvars = x.shape[2]
+
         # 1. Normalization
         means = x.mean(1, keepdim=True).detach() # [bs x 1 x nvars]
         x_enc = x - means
@@ -112,31 +111,35 @@ class VisionTS(nn.Module):
 
         # 2. Segmentation
         x_pad = F.pad(x_enc, (self.pad_left, 0), mode='replicate') # [b n s]
-        x_2d = einops.rearrange(x_pad, 'b n (p f) -> b n f p', f=self.periodicity)
+        x_pad = x_pad.sum(dim=1, keepdim=True)
+        x_2d = einops.rearrange(x_pad, 'b 1 (p f) -> (b 1) 1 f p', f=self.periodicity)
 
         # 3. Render & Alignment
         x_resize = self.input_resize(x_2d)
-        masked = torch.zeros((x_2d.shape[0], self.nvars, self.image_size, self.num_patch_output * self.patch_size), device=x_2d.device, dtype=x_2d.dtype)
+        masked = torch.zeros((x_2d.shape[0], 1, self.image_size, self.num_patch_output * self.patch_size), device=x_2d.device, dtype=x_2d.dtype)
         x_concat_with_masked = torch.cat([
             x_resize, 
             masked
         ], dim=-1)
-        # image_input = einops.repeat(x_concat_with_masked, 'b 1 h w -> b c h w', c=3)
+        image_input = einops.repeat(x_concat_with_masked, 'b 1 h w -> b c h w', c=3)
 
         # 4. Reconstruction
         _, y, mask = self.vision_model(
-            x_concat_with_masked, 
-            mask_ratio=self.mask_ratio, noise=einops.repeat(self.mask, '1 l -> n l', n=x_concat_with_masked.shape[0])
+            image_input, 
+            mask_ratio=self.mask_ratio, noise=einops.repeat(self.mask, '1 l -> n l', n=image_input.shape[0])
         )
-        image_reconstructed = self.vision_model.unpatchify(y) # [bs x nvars x h x w]
+        image_reconstructed = self.vision_model.unpatchify(y) # [(bs x nvars) x 3 x h x w]
         
         # 5. Forecasting
-        # y_grey = torch.mean(image_reconstructed, 1, keepdim=True) # color image to grey
-        y_segmentations = self.output_resize(image_reconstructed) # resize back
+        y_grey = torch.mean(image_reconstructed, 1, keepdim=True) # color image to grey
+        y_segmentations = self.output_resize(y_grey) # resize back
         y_flatten = einops.rearrange(
             y_segmentations, 
-            'b n f p -> b (p f) n') # flatten
-        y = y_flatten[:, self.pad_left + self.context_len: self.pad_left + self.context_len + self.pred_len, :] # extract the forecasting window
+            '(b 1) 1 f p -> b (p f) 1', 
+            b=x_enc.shape[0], f=self.periodicity
+        ) # flatten
+        y_linear = self.linear(y_flatten)
+        y = y_linear[:, self.pad_left + self.context_len: self.pad_left + self.context_len + self.pred_len, :] # extract the forecasting window
 
         # 6. Denormalization
         y = y * (stdev.repeat(1, self.pred_len, 1))

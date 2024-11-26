@@ -2,12 +2,12 @@ import torch
 
 import os
 
-from .visionts import models_mae
+from . import models_mae
 import einops
 import torch.nn.functional as F
 from torch import nn
 from PIL import Image
-from .visionts import util
+from . import util
 
 MAE_ARCH = {
     "mae_base": [models_mae.mae_vit_base_patch16, "mae_visualize_vit_base.pth"],
@@ -19,13 +19,13 @@ MAE_DOWNLOAD_URL = "https://dl.fbaipublicfiles.com/mae/visualize/"
 
 class VisionTS(nn.Module):
 
-    def __init__(self, arch='mae_base', finetune_type='ln', ckpt_dir='./ckpt/', load_ckpt=True, in_chans=7):
+    def __init__(self, arch='mae_base', finetune_type='ln', ckpt_dir='./ckpt/', load_ckpt=True):
         super(VisionTS, self).__init__()
 
         if arch not in MAE_ARCH:
             raise ValueError(f"Unknown arch: {arch}. Should be in {list(MAE_ARCH.keys())}")
 
-        self.vision_model = MAE_ARCH[arch][0](in_chans=in_chans)
+        self.vision_model = MAE_ARCH[arch][0]()
 
         if load_ckpt:
             ckpt_path = os.path.join(ckpt_dir, MAE_ARCH[arch][1])
@@ -51,6 +51,7 @@ class VisionTS(nn.Module):
                 elif 'attn' in finetune_type:
                     param.requires_grad = '.attn.' in n
 
+    
     def update_config(self, context_len, pred_len, periodicity=1, norm_const=0.4, align_const=0.4, interpolation='bilinear'):
         self.image_size = self.vision_model.patch_embed.img_size[0]
         self.patch_size = self.vision_model.patch_embed.patch_size[0]
